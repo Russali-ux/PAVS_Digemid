@@ -64,6 +64,23 @@ def main():
     with open(src, "r", encoding="utf-8") as f:
         records = json.load(f)
 
+    # Dedupe por enlace: el Excel puede traer el mismo enlace repetido en
+    # varias filas. Postgres rechaza un INSERT ... ON CONFLICT que intente
+    # afectar la misma fila dos veces en el mismo lote (error 21000), así
+    # que nos quedamos con la última aparición de cada enlace.
+    deduped = {}
+    sin_enlace = []
+    for rec in records:
+        enlace = rec.get("enlace")
+        if enlace:
+            deduped[enlace] = rec
+        else:
+            sin_enlace.append(rec)
+    n_antes = len(records)
+    records = list(deduped.values()) + sin_enlace
+    if len(records) < n_antes:
+        print(f"Nota: se descartaron {n_antes - len(records)} filas con enlace duplicado.")
+
     payload_records = []
     for rec in records:
         row = {k: rec.get(k) for k in FIELDS if k in rec or k == "embedding"}
