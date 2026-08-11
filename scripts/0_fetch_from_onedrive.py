@@ -19,7 +19,7 @@ import subprocess
 import sys
 
 RAW_DIR = os.path.join("data", "raw")
-DEFAULT_REMOTE_PATH = "Documents/Claude/Projects/Reportes PAVS"
+DEFAULT_REMOTE_PATH = "Documentos/Claude/Projects/Reportes PAVS"
 REMOTE_NAME = "onedrive"
 
 

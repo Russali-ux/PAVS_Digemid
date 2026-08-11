@@ -81,11 +81,11 @@ refresh token mientras se use con cierta frecuencia -- correr a diario lo
 mantiene vivo).
 
 **Ruta en OneDrive:** el script usa por defecto
-`Documents/Claude/Projects/Reportes PAVS` (dentro de tu OneDrive personal).
-Si rclone no encuentra esa ruta exacta (mayúsculas/espacios pueden variar
-según cómo OneDrive sincronizó las carpetas), ajústala en
+`Documentos/Claude/Projects/Reportes PAVS` (confirmado con `rclone lsjson`
+-- nota que es "Documentos" en español, no "Documents"). Si mueves la
+carpeta o cambia el idioma de tu OneDrive, ajústala en
 `scripts/0_fetch_from_onedrive.py` (`DEFAULT_REMOTE_PATH`) o pásala como
-`--remote-path` en el workflow.
+`--remote-path` al workflow.
 
 ## Cómo funciona el resto del pipeline
 
