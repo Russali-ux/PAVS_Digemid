@@ -22,6 +22,7 @@ Uso:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -37,10 +38,20 @@ BATCH_SIZE = 200
 FIELDS = [
     "anio", "mes", "fecha_emision", "fecha_revision", "pais", "agencia",
     "tipo_alerta", "titulo_alerta", "tipo_producto", "ifa", "reaccion_adversa",
-    "enlace", "fuente_archivo", "embedding",
+    "enlace", "fuente_archivo", "embedding", "dedupe_key",
 ]
+
+
+def make_dedupe_key(rec: dict) -> str:
+    """Clave única por FILA (no por enlace): un mismo boletín (p.ej. AEMPS
+    mensual) trae varias alertas con el mismo enlace. Debe coincidir con la
+    fórmula SQL usada en el backfill: md5 de enlace|titulo|ifa|reaccion
+    normalizados (trim + lower, null -> '')."""
+    partes = [rec.get(k) for k in ("enlace", "titulo_alerta", "ifa", "reaccion_adversa")]
+    norm = "|".join(("" if v is None else str(v)).strip().lower() for v in partes)
+    return hashlib.md5(norm.encode("utf-8")).hexdigest()
 # nota: "id" no se sube -- es uuid autogenerado por Supabase. El dedupe/upsert
-# se hace por `enlace` (on_conflict=enlace), no por id.
+# se hace por `dedupe_key` (on_conflict=dedupe_key), no por id.
 
 
 def main():
@@ -64,22 +75,17 @@ def main():
     with open(src, "r", encoding="utf-8") as f:
         records = json.load(f)
 
-    # Dedupe por enlace: el Excel puede traer el mismo enlace repetido en
-    # varias filas. Postgres rechaza un INSERT ... ON CONFLICT que intente
-    # afectar la misma fila dos veces en el mismo lote (error 21000), así
-    # que nos quedamos con la última aparición de cada enlace.
+    # Dedupe por dedupe_key (enlace + título + IFA + reacción). Varias alertas
+    # pueden compartir enlace (boletines); solo se descartan filas idénticas,
+    # que Postgres rechazaría en el mismo lote (error 21000).
     deduped = {}
-    sin_enlace = []
     for rec in records:
-        enlace = rec.get("enlace")
-        if enlace:
-            deduped[enlace] = rec
-        else:
-            sin_enlace.append(rec)
+        rec["dedupe_key"] = make_dedupe_key(rec)
+        deduped[rec["dedupe_key"]] = rec
     n_antes = len(records)
-    records = list(deduped.values()) + sin_enlace
+    records = list(deduped.values())
     if len(records) < n_antes:
-        print(f"Nota: se descartaron {n_antes - len(records)} filas con enlace duplicado.")
+        print(f"Nota: se descartaron {n_antes - len(records)} filas idénticas.")
 
     payload_records = []
     for rec in records:
@@ -96,12 +102,12 @@ def main():
         "Prefer": "resolution=merge-duplicates,return=minimal",
     }
 
-    print(f"Subiendo {len(payload_records)} alertas a {TABLE} (on_conflict=enlace)...")
+    print(f"Subiendo {len(payload_records)} alertas a {TABLE} (on_conflict=dedupe_key)...")
 
     for i in range(0, len(payload_records), BATCH_SIZE):
         batch = payload_records[i : i + BATCH_SIZE]
         resp = requests.post(
-            f"{endpoint}?on_conflict=enlace",
+            f"{endpoint}?on_conflict=dedupe_key",
             headers=headers,
             data=json.dumps(batch),
             timeout=60,
