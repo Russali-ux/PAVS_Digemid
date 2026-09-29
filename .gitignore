@@ -5,3 +5,7 @@ data/csv/*.csv
 data/json/*.json
 !data/csv/.gitkeep
 !data/json/.gitkeep
+
+# Los Excel NO se versionan (la fuente es OneDrive); se versiona data/md/
+data/raw/*.xlsx
+!data/raw/.gitkeep

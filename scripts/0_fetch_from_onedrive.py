@@ -2,7 +2,12 @@
 0_fetch_from_onedrive.py
 --------------------------
 Lista los .xlsx en la carpeta OneDrive "Reportes PAVS" (vía rclone, remote
-"onedrive:") y descarga a data/raw/ solo los que todavía no están ahí.
+"onedrive:") y descarga a data/raw/ SOLO el snapshot más reciente (por la fecha
+AAAA-MM-DD del nombre): cada snapshot trae el histórico completo, así que no hace
+falta bajar los demás. Con --todos descarga todos los que falten (comportamiento anterior).
+
+Los .xlsx ya NO se versionan en el repo (solo el Markdown de data/md/): la fuente
+de verdad de los Excel es OneDrive.
 
 Requiere que `rclone` esté instalado y configurado con un remote llamado
 "onedrive" (ver README.md -> "Configurar acceso a OneDrive (una sola vez)").
@@ -15,6 +20,7 @@ Uso:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -41,6 +47,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--remote-path", default=DEFAULT_REMOTE_PATH,
                          help="Ruta dentro del remote 'onedrive:' donde están los xlsx")
+    parser.add_argument("--todos", action="store_true",
+                        help="Descargar todos los xlsx que falten (por defecto: solo el más reciente)")
     args = parser.parse_args()
 
     os.makedirs(RAW_DIR, exist_ok=True)
@@ -50,6 +58,17 @@ def main():
 
     if not remote_xlsx:
         sys.exit(f"No se encontraron .xlsx en onedrive:{args.remote_path}")
+
+    if not args.todos:
+        # Solo snapshots "FT-95 ... PAVS_AAAA-MM-DD.xlsx"; el más reciente por fecha del nombre
+        fechados = sorted(
+            (m.group(1), n) for n in remote_xlsx
+            if "PAVS" in n.upper() and (m := re.search(r"(\d{4}-\d{2}-\d{2})", n))
+        )
+        if not fechados:
+            sys.exit("No se encontró ningún snapshot 'FT-95 ... PAVS_AAAA-MM-DD.xlsx' en OneDrive")
+        remote_xlsx = [fechados[-1][1]]
+        print(f"Snapshot más reciente en OneDrive: {remote_xlsx[0]}")
 
     local_existing = set(os.listdir(RAW_DIR))
     to_download = [name for name in remote_xlsx if name not in local_existing]

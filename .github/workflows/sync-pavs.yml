@@ -40,10 +40,10 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: 0. Traer xlsx nuevos de OneDrive
+      - name: 0. Traer el snapshot xlsx más reciente de OneDrive
         run: python scripts/0_fetch_from_onedrive.py
 
-      - name: 1. Convertir xlsx -> csv/json
+      - name: 1. Convertir xlsx -> csv/json/markdown
         run: python scripts/1_convert_xlsx.py
 
       - name: 2. Generar embeddings (local, sin API key)
@@ -55,14 +55,14 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python scripts/3_sync_to_supabase.py
 
-      - name: Commitear los xlsx nuevos (Raw data)
+      - name: Commitear el Markdown actualizado
         run: |
           git config user.name "pavs-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/raw
+          git add data/md
           if git diff --cached --quiet; then
-            echo "Sin archivos nuevos que commitear."
+            echo "Sin cambios en data/md."
           else
-            git commit -m "chore: sync PAVS xlsx desde OneDrive ($(date -u +%Y-%m-%d))"
+            git commit -m "PAVS: actualiza Markdown ($(date -u +%Y-%m-%d))"
             git push
           fi

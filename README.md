@@ -12,12 +12,13 @@ PAVS_Digemid/
 ├── .github/workflows/
 │   └── sync-pavs.yml            # corre todos los días (o manual)
 ├── data/
-│   ├── raw/     -> .xlsx traídos de OneDrive (SÍ se versionan -- "Raw data")
+│   ├── raw/     -> .xlsx traído de OneDrive (NO se versiona: la fuente es OneDrive)
 │   ├── csv/     -> salida: PAVS_BD_latest.csv (generado, no versionado)
-│   └── json/    -> salida: PAVS_BD_latest.json / PAVS_BD_embedded.json (generado, no versionado)
+│   ├── json/    -> salida: PAVS_BD_latest.json / PAVS_BD_embedded.json (generado, no versionado)
+│   └── md/pavs/ -> salida VERSIONADA: un Markdown por mes (AAAA-MM.md) + README.md (índice)
 ├── scripts/
-│   ├── 0_fetch_from_onedrive.py # trae los xlsx nuevos desde OneDrive (rclone)
-│   ├── 1_convert_xlsx.py        # xlsx -> csv + json
+│   ├── 0_fetch_from_onedrive.py # trae el snapshot xlsx más reciente desde OneDrive (rclone)
+│   ├── 1_convert_xlsx.py        # xlsx -> csv + json + markdown mensual
 │   ├── 2_generate_embeddings.py # texto de cada alerta -> embedding (local, sin API key)
 │   └── 3_sync_to_supabase.py    # upsert csv/json + embeddings -> Supabase
 ├── sql/
@@ -29,17 +30,16 @@ PAVS_Digemid/
 
 ## Qué hace el Action todos los días (`sync-pavs.yml`)
 
-Corre a las **06:00 hora Perú** (11:00 UTC) y también se puede lanzar a mano
+Corre a las **12:00 hora Perú** (17:00 UTC) y también se puede lanzar a mano
 desde la pestaña *Actions* del repo (botón "Run workflow"):
 
 1. Se conecta a tu OneDrive (carpeta `Reportes PAVS`) con `rclone` y descarga
-   solo los `.xlsx` que todavía no estén en `data/raw/`.
-2. Convierte el más reciente (`PAVS_BD`) a CSV/JSON.
+   solo el snapshot `.xlsx` más reciente (cada uno trae el histórico completo).
+2. Lo convierte (`PAVS_BD`) a CSV/JSON y a **Markdown mensual** (`data/md/pavs/`).
 3. Genera embeddings localmente (sin costo, sin API key).
 4. Hace upsert a Supabase (`public.pavs_alertas`, dedupe por `enlace`).
-5. Commitea los `.xlsx` nuevos a `data/raw/` -- así el repo queda como el
-   historial versionado de "Raw data". Si no hay archivos nuevos, no
-   commitea nada.
+5. Commitea solo los Markdown que cambiaron (normalmente, el mes en curso).
+   Si nada cambió, no commitea nada.
 
 ## Configurar acceso a OneDrive (una sola vez)
 
@@ -86,6 +86,14 @@ mantiene vivo).
 carpeta o cambia el idioma de tu OneDrive, ajústala en
 `scripts/0_fetch_from_onedrive.py` (`DEFAULT_REMOTE_PATH`) o pásala como
 `--remote-path` al workflow.
+
+## Por qué Markdown y no Excel en el repo
+
+Cada snapshot `.xlsx` trae el histórico completo (~0.6 MB) y se subía uno por día:
+74 archivos sumaban 36.7 MB y el repo crecía ~220 MB por año. El mismo contenido en
+Markdown ocupa ~1.7 MB en total, se lee directo en GitHub y el cambio diario solo toca
+el archivo del mes en curso. Los Excel siguen en OneDrive (fuente de verdad); los
+subidos antes de este cambio se conservan en el historial de Git.
 
 ## Cómo funciona el resto del pipeline
 
