@@ -1,16 +1,16 @@
 # Alertas PAVS (FT-95) en Markdown
 
-- **Total de alertas:** 2437
-- **Alerta más reciente:** 2026-10-09
-- **Snapshot de origen:** `FT-95 Monitoreo de Alertas de PAVS_2026-10-09.xlsx` (OneDrive · Reportes PAVS)
+- **Total de alertas:** 2512
+- **Alerta más reciente:** 2026-10-12
+- **Snapshot de origen:** `FT-95 Monitoreo de Alertas de PAVS_2026-10-12_v2.xlsx` (OneDrive · Reportes PAVS)
 
 | Mes | Alertas |
 |---|---|
-| [2026-10](2026-10.md) | 101 |
-| [2026-09](2026-09.md) | 283 |
-| [2026-08](2026-08.md) | 161 |
-| [2026-07](2026-07.md) | 190 |
-| [2026-06](2026-06.md) | 73 |
+| [2026-10](2026-10.md) | 125 |
+| [2026-09](2026-09.md) | 299 |
+| [2026-08](2026-08.md) | 175 |
+| [2026-07](2026-07.md) | 206 |
+| [2026-06](2026-06.md) | 78 |
 | [2026-05](2026-05.md) | 14 |
 | [2026-04](2026-04.md) | 29 |
 | [2026-03](2026-03.md) | 54 |
