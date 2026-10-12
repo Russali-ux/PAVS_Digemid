@@ -2,7 +2,7 @@
 
 - **Total de alertas:** 2512
 - **Alerta más reciente:** 2026-10-12
-- **Snapshot de origen:** `FT-95 Monitoreo de Alertas de PAVS_2026-10-12_v2.xlsx` (OneDrive · Reportes PAVS)
+- **Snapshot de origen:** `FT-95 Monitoreo de Alertas de PAVS_2026-10-12.xlsx` (OneDrive · Reportes PAVS)
 
 | Mes | Alertas |
 |---|---|
