@@ -1,99 +1,53 @@
 # PAVS_Digemid
 
-Pipeline **automático diario** que trae el reporte FT-95 Monitoreo de
-Alertas de PAVS desde OneDrive, lo convierte a CSV/JSON, genera embeddings
-(locales, gratis) y lo sincroniza con Supabase (pgvector) para que ConkoSafe
-IA / el chatbot pueda hacer búsqueda semántica sobre las alertas.
+Pipeline del reporte **FT-95 Monitoreo de Alertas de PAVS**: las alertas viven en
+Supabase (`public.pavs_alertas`, pgvector) para que ConkoSafe IA / el chatbot haga
+búsqueda semántica, y el repo guarda una copia legible en Markdown mensual.
+
+## Cómo fluyen los datos (desde el 2026-11-12)
+
+```
+Tarea programada de Claude (en la PC)
+  ├─ escribe el Excel FT-95 ..._AAAA-MM-DD.xlsx en OneDrive / Reportes PAVS   (sin cambios)
+  └─ carga las filas nuevas en Supabase:  select * from public.upsert_pavs_alertas('[...]'::jsonb, '<xlsx>')
+                                          (embedding queda en NULL)
+GitHub Action diario (12:00 Lima)
+  1. scripts/embed_missing.py     -> calcula los embeddings que falten (modelo local, sin API key)
+  2. scripts/export_markdown.py   -> regenera data/md/pavs/ desde Supabase y commitea si cambió
+```
+
+**Por qué cambió:** el 2026-11-12 OneDrive empezó a rechazar todas las descargas por API
+de la cuenta (listar sí funciona; descargar devuelve `401 BadContextToken`, también con curl y
+token recién renovado). El Action ya no descarga nada de OneDrive ni necesita `RCLONE_CONF`.
 
 ## Estructura del repo
 
 ```
 PAVS_Digemid/
-├── .github/workflows/
-│   └── sync-pavs.yml            # corre todos los días (o manual)
-├── data/
-│   ├── raw/     -> .xlsx traído de OneDrive (NO se versiona: la fuente es OneDrive)
-│   ├── csv/     -> salida: PAVS_BD_latest.csv (generado, no versionado)
-│   ├── json/    -> salida: PAVS_BD_latest.json / PAVS_BD_embedded.json (generado, no versionado)
-│   └── md/pavs/ -> salida VERSIONADA: un Markdown por mes (AAAA-MM.md) + README.md (índice)
+├── .github/workflows/sync-pavs.yml   # diario 12:00 Lima (o manual)
+├── data/md/pavs/                     # VERSIONADO: un Markdown por mes (AAAA-MM.md) + README.md
 ├── scripts/
-│   ├── 0_fetch_from_onedrive.py # trae el snapshot xlsx más reciente desde OneDrive (rclone)
-│   ├── 1_convert_xlsx.py        # xlsx -> csv + json + markdown mensual
-│   ├── 2_generate_embeddings.py # texto de cada alerta -> embedding (local, sin API key)
-│   └── 3_sync_to_supabase.py    # upsert csv/json + embeddings -> Supabase
+│   ├── embed_missing.py              # flujo diario: embeddings faltantes en Supabase
+│   ├── export_markdown.py            # flujo diario: Supabase -> Markdown
+│   ├── pavs_md.py, supabase_rest.py  # utilidades compartidas
+│   ├── 1_convert_xlsx.py             # manual: xlsx -> csv/json/markdown
+│   ├── 2_generate_embeddings.py      # manual: embeddings de todo el json
+│   └── 3_sync_to_supabase.py         # manual: carga completa json -> Supabase
 ├── sql/
-│   └── 001_create_pavs_alertas.sql   # esquema (ya aplicado en el proyecto)
-├── requirements.txt
-├── .env.example
-└── .gitignore
+│   ├── 001_create_pavs_alertas.sql   # esquema
+│   └── 002_upsert_pavs_alertas.sql   # función de carga directa (la usa la tarea programada)
+└── requirements.txt
 ```
 
-## Qué hace el Action todos los días (`sync-pavs.yml`)
+Secretos del Action: `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`. El secreto `RCLONE_CONF`
+ya no se usa y se puede borrar.
 
-Corre a las **12:00 hora Perú** (17:00 UTC) y también se puede lanzar a mano
-desde la pestaña *Actions* del repo (botón "Run workflow"):
+## Carga completa desde un Excel (recuperación / backfill)
 
-1. Se conecta a tu OneDrive (carpeta `Reportes PAVS`) con `rclone` y descarga
-   solo el snapshot `.xlsx` más reciente (cada uno trae el histórico completo).
-2. Lo convierte (`PAVS_BD`) a CSV/JSON y a **Markdown mensual** (`data/md/pavs/`).
-3. Genera embeddings localmente (sin costo, sin API key).
-4. Hace upsert a Supabase (`public.pavs_alertas`, dedupe por `enlace`).
-5. Commitea solo los Markdown que cambiaron (normalmente, el mes en curso).
-   Si nada cambió, no commitea nada.
-
-## Configurar acceso a OneDrive (una sola vez)
-
-Para que GitHub Actions pueda leer tu carpeta de OneDrive todos los días sin
-que tengas que iniciar sesión manualmente, se usa `rclone` (open source, no
-requiere registrar una app en Azure). El login se hace **una sola vez, en tu
-propia PC**, y genera un token que se guarda como secreto en GitHub.
-
-1. Instala rclone en tu PC: https://rclone.org/downloads/ (en Windows, baja
-   el zip, descomprime, y abre PowerShell en esa carpeta).
-2. Corre:
-   ```
-   rclone config
-   ```
-   - `n` (New remote)
-   - name: `onedrive`
-   - type: busca y elige `onedrive` en la lista
-   - client_id / client_secret: deja vacío (Enter, Enter)
-   - "Edit advanced config?": `n`
-   - "Use auto config?": `y` -- esto abre tu navegador, inicia sesión con tu
-     cuenta (ruzph...) y autoriza.
-   - Tipo de cuenta: `OneDrive Personal`
-   - Elige el drive que encuentre (tu OneDrive personal)
-   - Confirma con `y`, luego `q` para salir
-3. Esto crea un archivo `rclone.conf` (normalmente en
-   `C:\Users\ruzph\AppData\Roaming\rclone\rclone.conf` en Windows). Ábrelo
-   con el Bloc de notas y copia **todo el contenido** (incluye una sección
-   `[onedrive]` con `type`, `token`, etc.).
-4. En GitHub: ve al repo -> **Settings -> Secrets and variables -> Actions
-   -> New repository secret**, y crea:
-   - `RCLONE_CONF`: pega el contenido completo del `rclone.conf`
-   - `SUPABASE_URL`: `https://ggbnfdaxtsngsjssrwrl.supabase.co`
-   - `SUPABASE_SERVICE_ROLE_KEY`: la key de Settings -> API -> service_role
-     de tu proyecto Supabase (nunca la anon key)
-
-Con esos 3 secretos configurados, el Action ya puede correr solo. El token
-de rclone se refresca automáticamente en cada corrida (Microsoft renueva el
-refresh token mientras se use con cierta frecuencia -- correr a diario lo
-mantiene vivo).
-
-**Ruta en OneDrive:** el script usa por defecto
-`Documentos/Claude/Projects/Reportes PAVS` (confirmado con `rclone lsjson`
--- nota que es "Documentos" en español, no "Documents"). Si mueves la
-carpeta o cambia el idioma de tu OneDrive, ajústala en
-`scripts/0_fetch_from_onedrive.py` (`DEFAULT_REMOTE_PATH`) o pásala como
-`--remote-path` al workflow.
-
-## Por qué Markdown y no Excel en el repo
-
-Cada snapshot `.xlsx` trae el histórico completo (~0.6 MB) y se subía uno por día:
-74 archivos sumaban 36.7 MB y el repo crecía ~220 MB por año. El mismo contenido en
-Markdown ocupa ~1.7 MB en total, se lee directo en GitHub y el cambio diario solo toca
-el archivo del mes en curso. Los Excel siguen en OneDrive (fuente de verdad); los
-subidos antes de este cambio se conservan en el historial de Git.
+Si alguna vez hace falta reconstruir la tabla desde un snapshot (cada xlsx trae el
+histórico completo en la hoja `PAVS_BD`): copiarlo a `data/raw/` y correr los pasos
+manuales `1_convert_xlsx.py` -> `2_generate_embeddings.py` -> `3_sync_to_supabase.py`
+(ver abajo). El upsert usa `dedupe_key`, así que no duplica filas.
 
 ## Cómo funciona el resto del pipeline
 
@@ -146,7 +100,8 @@ similitud.
 | tipo_producto      | text         |                                            |
 | ifa                | text         | IFA / Nombre genérico                    |
 | reaccion_adversa   | text         |                                            |
-| enlace             | text (UNIQUE)| clave de dedupe/upsert                   |
+| enlace             | text         |                                            |
+| dedupe_key         | text (UNIQUE)| md5(enlace/título/IFA/reacción): clave de upsert |
 | embedding          | vector(384)  | modelo local, gratis                     |
 | fuente_archivo     | text         | nombre del xlsx de origen                |
 | created_at/updated_at | timestamptz | automáticos                            |
@@ -160,18 +115,19 @@ las escrituras (upsert) se hacen con la `service_role` key, que ignora RLS.
 pip install -r requirements.txt
 cp .env.example .env   # completa SUPABASE_SERVICE_ROLE_KEY
 
-# si quieres traer los xlsx de OneDrive localmente, necesitas rclone
-# configurado igual que en el paso "Configurar acceso a OneDrive"
-python scripts/0_fetch_from_onedrive.py
+# flujo diario
+export $(grep -v '^#' .env | xargs)
+python scripts/embed_missing.py
+python scripts/export_markdown.py
 
+# carga completa desde un xlsx copiado a data/raw/
 python scripts/1_convert_xlsx.py
 python scripts/2_generate_embeddings.py
-export $(grep -v '^#' .env | xargs)
 python scripts/3_sync_to_supabase.py
 ```
 
 En GitHub también puedes lanzarlo a mano: pestaña **Actions -> Sync PAVS
-(OneDrive -> repo -> Supabase) -> Run workflow**.
+(Supabase -> embeddings -> Markdown) -> Run workflow**.
 
 ## Notas
 
@@ -180,12 +136,11 @@ En GitHub también puedes lanzarlo a mano: pestaña **Actions -> Sync PAVS
   2019–2026 están todos en esa hoja), por eso el pipeline solo lee `PAVS_BD`.
 - La hoja `DS043` es la ficha de referencia del documento (código, versión,
   vigencia, lista de agencias) -- no son datos de alertas, no se procesa.
-- Los secretos (`RCLONE_CONF`, `SUPABASE_SERVICE_ROLE_KEY`) **nunca** deben
+- Los secretos (`SUPABASE_SERVICE_ROLE_KEY`) **nunca** deben
   subirse al repo; solo van en GitHub Secrets o en tu `.env` local (ya está
   en `.gitignore`).
 - El modelo de embeddings descarga sus pesos de Hugging Face la primera vez
   que corre; el workflow los cachea (`actions/cache`) para no volver a
   descargarlos cada día.
-- Si algún día cambias la carpeta de OneDrive o el nombre del archivo deja
-  de traer la fecha en `YYYY-MM-DD`, ajusta `find_latest_xlsx()` en
-  `1_convert_xlsx.py`.
+- Si el nombre del xlsx deja de traer la fecha en `YYYY-MM-DD`, ajusta
+  `find_latest_xlsx()` en `1_convert_xlsx.py` (solo afecta la carga manual).

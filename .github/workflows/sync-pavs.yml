@@ -1,4 +1,10 @@
-name: Sync PAVS (OneDrive -> repo -> Supabase)
+name: Sync PAVS (Supabase -> embeddings -> Markdown)
+
+# Desde nov-2026 la tarea programada de Claude carga las alertas nuevas directo en
+# Supabase (public.upsert_pavs_alertas) y deja el embedding en NULL. Este Action:
+#   1. completa los embeddings que falten (modelo local, sin API key)
+#   2. regenera el Markdown mensual desde Supabase y lo commitea si cambió
+# Ya no descarga nada de OneDrive (OneDrive empezó a rechazar las descargas por API).
 
 on:
   schedule:
@@ -12,6 +18,9 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,16 +29,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install rclone
-        run: curl https://rclone.org/install.sh | sudo bash
-
-      - name: Configurar rclone (OneDrive)
-        env:
-          RCLONE_CONF_CONTENT: ${{ secrets.RCLONE_CONF }}
-        run: |
-          mkdir -p ~/.config/rclone
-          printf '%s' "$RCLONE_CONF_CONTENT" > ~/.config/rclone/rclone.conf
 
       - name: Cache del modelo de embeddings (Hugging Face)
         uses: actions/cache@v4
@@ -40,20 +39,11 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: 0. Traer el snapshot xlsx más reciente de OneDrive
-        run: python scripts/0_fetch_from_onedrive.py
+      - name: 1. Completar embeddings faltantes en Supabase
+        run: python scripts/embed_missing.py
 
-      - name: 1. Convertir xlsx -> csv/json/markdown
-        run: python scripts/1_convert_xlsx.py
-
-      - name: 2. Generar embeddings (local, sin API key)
-        run: python scripts/2_generate_embeddings.py
-
-      - name: 3. Sincronizar con Supabase
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: python scripts/3_sync_to_supabase.py
+      - name: 2. Regenerar Markdown desde Supabase
+        run: python scripts/export_markdown.py
 
       - name: Commitear el Markdown actualizado
         run: |
