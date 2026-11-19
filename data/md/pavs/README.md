@@ -1,12 +1,12 @@
 # Alertas PAVS (FT-95) en Markdown
 
-- **Total de alertas:** 3016
-- **Alerta más reciente:** 2026-11-18
+- **Total de alertas:** 3033
+- **Alerta más reciente:** 2026-11-19
 - **Origen:** Supabase `public.pavs_alertas`
 
 | Mes | Alertas |
 |---|---|
-| [2026-11](2026-11.md) | 215 |
+| [2026-11](2026-11.md) | 232 |
 | [2026-10](2026-10.md) | 406 |
 | [2026-09](2026-09.md) | 300 |
 | [2026-08](2026-08.md) | 186 |
